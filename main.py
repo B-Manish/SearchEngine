@@ -86,10 +86,9 @@ def search_hotels(req: SearchRequest):
         exact_results = exact_match_df[["Hotel_Name", "Hotel_Address"]].copy()
         exact_results["Similarity_Score"] = 1.0
 
-    # Semantic fallback
-    query_vector = model.encode([req.query]).astype("float32")
-    faiss.normalize_L2(query_vector)
-    distances, indices = index.search(query_vector, req.top_k)
+    query_vector = model.encode([req.query]).astype("float32") # Converts query into a vector (into a 32 bit vector as  it is the required format for the FAISS)
+    faiss.normalize_L2(query_vector) # Normalises to L2 (removes magnitude out of equation and compares only direction of the vectors)
+    distances, indices = index.search(query_vector, req.top_k) # Search for the top k results
 
     semantic_results = []
     for idx, score in zip(indices[0], distances[0]):
