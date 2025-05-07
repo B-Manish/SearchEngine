@@ -100,7 +100,6 @@ def search_hotels(req: SearchRequest):
             "Similarity_Score": round(float(score), 4)
         })
 
-    # Combine and deduplicate results
     combined = pd.DataFrame(exact_results).to_dict(orient="records") + semantic_results
     seen = set()
     final_results = []
@@ -137,6 +136,5 @@ def hotels_near_me(req: NearbyRequest):
     return {"results": results}    
 
 
-# Step 5: Run app
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
