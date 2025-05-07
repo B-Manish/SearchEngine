@@ -52,10 +52,8 @@ import faiss
 import uvicorn
 
 from geopy.distance import geodesic
-from typing import Optional
-
 df = pd.read_csv("Hotel_Reviews.csv")
-df = df[["Hotel_Name", "Hotel_Address","Positive_Review","Negative_Review","lat","lng"]].dropna().head(1000)
+df = df[["Hotel_Name", "Hotel_Address","Positive_Review","Negative_Review","lat","lng"]].dropna().head(500)
 
 df["content"] = df["Hotel_Name"] + ". " + df["Hotel_Address"] + ". " + df["Positive_Review"] + ". " + df["Negative_Review"] + ". " + df["lat"].astype(str) + ". " + df["lng"].astype(str)
 
@@ -72,33 +70,16 @@ index.add(embeddings)
 
 app = FastAPI()
 
-class CombinedRequest(BaseModel):
+class SearchRequest(BaseModel):
     query: str
     top_k: int = 5
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    radius_km: float = 3.0
 
-@app.post("/hotels")
-def hotels(req: CombinedRequest):
-    results = []
-
-    # Nearby search if coordinates are provided
-    if req.latitude is not None and req.longitude is not None:
-        user_coords = (req.latitude, req.longitude)
-        def calculate_distance(row):
-            hotel_coords = (row["lat"], row["lng"])
-            return geodesic(user_coords, hotel_coords).km
-        df["distance_km"] = df.apply(calculate_distance, axis=1)
-        nearby = df[df["distance_km"] <= req.radius_km].copy()
-        nearby = nearby.sort_values("distance_km")
-        results = nearby[["Hotel_Name", "Hotel_Address", "distance_km"]].to_dict(orient="records")
-        # If only coordinates are provided, return here
-        if not req.query:
-            return {"results": results}
-
-    # Semantic search 
+@app.post("/search")
+def search_hotels(req: SearchRequest):
     query_lower = req.query.strip().lower()
+    # print("query_lower",query_lower)
+    # print(df["Hotel_Name"].str.lower())
+
     exact_match_df = df[df["Hotel_Name"].str.lower() == query_lower]
     exact_results = []
     if not exact_match_df.empty:
@@ -132,14 +113,30 @@ def hotels(req: CombinedRequest):
         if len(final_results) == req.top_k:
             break
 
-    # If coordinates were also provided, filter semantic results to only those in the nearby list
-    if results:
-        final_results = [
-            r for r in final_results
-            if any(n["Hotel_Name"] == r["Hotel_Name"] and n["Hotel_Address"] == r["Hotel_Address"] for n in results)
-        ]
+    return {"results": final_results}
 
-    return {"results": final_results if final_results else results}
+
+class NearbyRequest(BaseModel):
+    latitude: float
+    longitude: float
+    radius_km: float = 3.0 
+
+@app.post("/hotels-near-me")
+def hotels_near_me(req: NearbyRequest):
+    user_coords = (req.latitude, req.longitude)
+
+    def calculate_distance(row):
+        hotel_coords = (row["lat"], row["lng"])
+        return geodesic(user_coords, hotel_coords).km
+
+    df["distance_km"] = df.apply(calculate_distance, axis=1)
+
+    nearby = df[df["distance_km"] <= req.radius_km].copy()
+    nearby = nearby.sort_values("distance_km")
+
+    results = nearby[["Hotel_Name", "Hotel_Address", "distance_km"]].to_dict(orient="records")
+    return {"results": results}    
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
