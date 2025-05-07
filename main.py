@@ -1,3 +1,4 @@
+
 # import pandas as pd
 # import numpy as np
 # from fastapi import FastAPI
@@ -50,10 +51,11 @@ from sentence_transformers import SentenceTransformer
 import faiss
 import uvicorn
 
+from geopy.distance import geodesic
 df = pd.read_csv("Hotel_Reviews.csv")
-df = df[["Hotel_Name", "Hotel_Address","Positive_Review"]].dropna().head(1000)
+df = df[["Hotel_Name", "Hotel_Address","Positive_Review","lat","lng"]].dropna().head(1000)
 
-df["content"] = df["Hotel_Name"] + ". " + df["Hotel_Address"] + ". " + df["Positive_Review"]
+df["content"] = df["Hotel_Name"] + ". " + df["Hotel_Address"] + ". " + df["Positive_Review"] + ". " + df["lat"].astype(str) + ". " + df["lng"].astype(str)
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
 embeddings = model.encode(df["content"].tolist(), show_progress_bar=True)
@@ -61,7 +63,7 @@ embeddings = np.array(embeddings).astype("float32")
 
 faiss.normalize_L2(embeddings)
 
-# Step 3: FAISS Index for Cosine Similarity
+# FAISS Index for Cosine Similarity
 dimension = embeddings.shape[1]
 index = faiss.IndexFlatIP(dimension)  # Inner Product Index
 index.add(embeddings)
@@ -75,10 +77,9 @@ class SearchRequest(BaseModel):
 @app.post("/search")
 def search_hotels(req: SearchRequest):
     query_lower = req.query.strip().lower()
-    print("query_lower",query_lower)
-    print(df["Hotel_Name"].str.lower())
+    # print("query_lower",query_lower)
+    # print(df["Hotel_Name"].str.lower())
 
-    # Exact match override
     exact_match_df = df[df["Hotel_Name"].str.lower() == query_lower]
     exact_results = []
     if not exact_match_df.empty:
@@ -112,6 +113,28 @@ def search_hotels(req: SearchRequest):
             break
 
     return {"results": final_results}
+
+
+class NearbyRequest(BaseModel):
+    latitude: float
+    longitude: float
+    radius_km: float = 3.0 
+
+@app.post("/hotels-near-me")
+def hotels_near_me(req: NearbyRequest):
+    user_coords = (req.latitude, req.longitude)
+
+    def calculate_distance(row):
+        hotel_coords = (row["lat"], row["lng"])
+        return geodesic(user_coords, hotel_coords).km
+
+    df["distance_km"] = df.apply(calculate_distance, axis=1)
+
+    nearby = df[df["distance_km"] <= req.radius_km].copy()
+    nearby = nearby.sort_values("distance_km")
+
+    results = nearby[["Hotel_Name", "Hotel_Address", "distance_km"]].to_dict(orient="records")
+    return {"results": results}    
 
 
 # Step 5: Run app
