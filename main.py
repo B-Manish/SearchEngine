@@ -53,9 +53,9 @@ import uvicorn
 
 from geopy.distance import geodesic
 df = pd.read_csv("Hotel_Reviews.csv")
-df = df[["Hotel_Name", "Hotel_Address","Positive_Review","lat","lng"]].dropna().head(1000)
+df = df[["Hotel_Name", "Hotel_Address","Positive_Review","Negative_Review","lat","lng"]].dropna().head(1000)
 
-df["content"] = df["Hotel_Name"] + ". " + df["Hotel_Address"] + ". " + df["Positive_Review"] + ". " + df["lat"].astype(str) + ". " + df["lng"].astype(str)
+df["content"] = df["Hotel_Name"] + ". " + df["Hotel_Address"] + ". " + df["Positive_Review"] + ". " + df["Negative_Review"] + ". " + df["lat"].astype(str) + ". " + df["lng"].astype(str)
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
 embeddings = model.encode(df["content"].tolist(), show_progress_bar=True)
@@ -93,6 +93,9 @@ def search_hotels(req: SearchRequest):
     semantic_results = []
     for idx, score in zip(indices[0], distances[0]):
         hotel = df.iloc[idx]
+        neg = hotel["Negative_Review"].lower() if "Negative_Review" in hotel else ""
+        if ("no" in neg or "not" in neg or "without" in neg):
+            continue
         semantic_results.append({
             "Hotel_Name": hotel["Hotel_Name"],
             "Hotel_Address": hotel["Hotel_Address"],
