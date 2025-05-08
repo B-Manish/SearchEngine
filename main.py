@@ -50,10 +50,11 @@ from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 import faiss
 import uvicorn
+import torch
 
 from geopy.distance import geodesic
 df = pd.read_csv("Hotel_Reviews.csv")
-df = df[["Hotel_Name", "Hotel_Address","Positive_Review","Negative_Review","lat","lng"]].dropna().head(500)
+df = df[["Hotel_Name", "Hotel_Address","Positive_Review","Negative_Review","lat","lng"]].dropna().head(1000)
 
 df["content"] = df["Hotel_Name"] + ". " + df["Hotel_Address"] + ". " + df["Positive_Review"] + ". " + df["Negative_Review"] + ". " + df["lat"].astype(str) + ". " + df["lng"].astype(str)
 
@@ -73,6 +74,20 @@ app = FastAPI()
 class SearchRequest(BaseModel):
     query: str
     top_k: int = 5
+
+
+def check_config ():
+    print(f"PyTorch version: {torch.__version__}")
+    print(f"CUDA available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"Current CUDA device: {torch.cuda.current_device()}")
+        print(f"CUDA device name: {torch.cuda.get_device_name(0)}")
+        print(f"Number of CUDA devices: {torch.cuda.device_count()}")
+    else:
+        print("Running on CPU")    
+
+check_config()
+
 
 @app.post("/search")
 def search_hotels(req: SearchRequest):
@@ -99,7 +114,9 @@ def search_hotels(req: SearchRequest):
         semantic_results.append({
             "Hotel_Name": hotel["Hotel_Name"],
             "Hotel_Address": hotel["Hotel_Address"],
-            "Similarity_Score": round(float(score), 4)
+            "Similarity_Score": round(float(score), 4),
+            "Positive_Review": hotel["Positive_Review"],
+            "Negative_Review": hotel["Negative_Review"]
         })
 
     combined = pd.DataFrame(exact_results).to_dict(orient="records") + semantic_results
